@@ -1,3 +1,4 @@
+// Origin ver 0.5
 (function () {
     'use strict';
 
@@ -13,16 +14,18 @@
     var gammaState = { applied: false, saved: null };
     var lastForeverTick = {};
 
+    var wasInWorld = false;
+
     function getMc() { return ModAPI.mc || ModAPI.javaClient || null; }
     function getPlayer() { var mc = getMc(); return mc ? mc.thePlayer : null; }
 
     function safeNumber(v) {
         if (v == null) return 0;
+        if (typeof v === 'symbol') return 0;
         if (typeof v === 'number') return isFinite(v) ? v : 0;
         if (typeof v === 'bigint') return Number(v);
         if (typeof v === 'boolean') return v ? 1 : 0;
-        var n = Number(v);
-        return isFinite(n) ? n : 0;
+        try { var n = Number(v); return isFinite(n) ? n : 0; } catch(e) { return 0; }
     }
 
     function nameOf(p) {
@@ -87,14 +90,15 @@
     }
     function blockAt(world, x, y, z) {
         if (!world) return null;
+        x = safeNumber(x); y = safeNumber(y); z = safeNumber(z);
         if (typeof world.getBlockState === 'function') {
             var ctor = findBlockPosCtor();
             if (ctor) {
-                try { return world.getBlockState(new ctor(safeNumber(x), safeNumber(y), safeNumber(z))); } catch(e){}
+                try { return world.getBlockState(new ctor(x, y, z)); } catch(e){}
             }
         }
-        try { if (typeof world.getBlock === 'function') return world.getBlock(safeNumber(x), safeNumber(y), safeNumber(z)); } catch(e){}
-        try { if (typeof world.getBlockId === 'function') return { __id: safeNumber(world.getBlockId(safeNumber(x), safeNumber(y), safeNumber(z))) }; } catch(e){}
+        try { if (typeof world.getBlock === 'function') return world.getBlock(x, y, z); } catch(e){}
+        try { if (typeof world.getBlockId === 'function') return { __id: safeNumber(world.getBlockId(x, y, z)) }; } catch(e){}
         return null;
     }
     function getBlockId(state) {
@@ -132,20 +136,6 @@
         } catch(e){}
         return false;
     }
-    function blockIsAir(state) {
-        if (!state) return true;
-        var id = getBlockId(state);
-        if (id === 0) return true;
-        try {
-            var b = state.getBlock ? state.getBlock() : null;
-            if (!b) return true;
-            try { if (typeof b.isAir === 'function' && b.isAir(state, null, null)) return true; } catch(e){}
-            var un = null;
-            try { if (typeof b.getUnlocalizedName === 'function') un = b.getUnlocalizedName(); } catch(e){}
-            if (un && /air/i.test(String(un))) return true;
-        } catch(e){}
-        return false;
-    }
     function isInWater(p) {
         if (!p) return false;
         try { if (typeof p.isInWater === 'function') { var r = p.isInWater(); if (r === true || safeNumber(r) > 0) return true; } } catch(e){}
@@ -174,39 +164,61 @@
     }
     function isUnderSky(p) {
         if (!p) return true;
-        var mc = getMc(); var w = mc && mc.theWorld;
-        if (!w) return true;
-        var x = Math.floor(safeNumber(p.posX));
-        var y0 = Math.floor(safeNumber(p.posY) + 0.1);
-        var z = Math.floor(safeNumber(p.posZ));
-        var checked = 0, solid = 0;
-        for (var dy = 1; dy <= 5; dy++) {
-            var s = blockAt(w, x, y0 + dy, z);
-            if (s) { checked++; if (!blockIsAir(s)) solid++; }
-        }
-        if (checked === 0) return true;
-        return solid === 0;
+        try {
+            if (typeof p.getBrightness === 'function') {
+                var b = safeNumber(p.getBrightness(1.0));
+                if (b > 0) return b >= 0.8;
+            }
+        } catch(e){}
+        try {
+            if (typeof p.getBrightnessForRender === 'function') {
+                var b2 = safeNumber(p.getBrightnessForRender(1.0));
+                if (b2 > 0) return b2 >= 0.8;
+            }
+        } catch(e){}
+        return true;
     }
     function getWorldTime(mc) {
         try {
             var w = mc && mc.theWorld;
             if (!w) return null;
             var raw = null;
-            if (typeof w.getWorldTime === 'function') raw = w.getWorldTime();
+            if (typeof w.getWorldTime === 'function') {
+                try { raw = w.getWorldTime(); } catch(e){}
+            }
             if (raw == null && typeof w.worldTime !== 'undefined') raw = w.worldTime;
             if (raw == null && typeof w.$worldTime !== 'undefined') raw = w.$worldTime;
+            if (raw == null && typeof w.time !== 'undefined') raw = w.time;
             if (raw == null) return null;
             return safeNumber(raw);
         } catch(e){}
         return null;
     }
     function isDaytime(mc) {
+        if (!mc) return true;
+        var w = mc.theWorld;
+        if (!w) return true;
         var t = getWorldTime(mc);
-        if (t != null && isFinite(t)) {
+        if (t != null && isFinite(t) && t > 0) {
             var dt = ((t % 24000) + 24000) % 24000;
             return dt < 12000;
         }
-        try { var w = mc && mc.theWorld; if (w && typeof w.isDaytime === 'function') return !!w.isDaytime(); } catch(e){}
+        try {
+            if (typeof w.getCelestialAngle === 'function') {
+                var ang = safeNumber(w.getCelestialAngle(1.0));
+                if (isFinite(ang) && ang >= 0) return ang > 0.25 && ang < 0.75;
+            }
+        } catch(e){}
+        try {
+            if (typeof w.isDaytime === 'function') {
+                var r = w.isDaytime();
+                if (typeof r === 'boolean') return r;
+            }
+        } catch(e){}
+        try {
+            var sl = safeNumber(w.skylightSubtracted);
+            if (sl > 0) return sl < 4;
+        } catch(e){}
         return true;
     }
     function isRaining(mc) {
@@ -352,16 +364,15 @@
 
     var CMD_PREFIX = 'ogset';
     var CMD_WATER = 'ogwater';
+    var CMD_ROTTEN = 'ogrotten';
     var CMD_RE = /ogset\s+([a-z]+)/i;
     var FOREVER_SEC = 60;
-    var DEBUG_CMD = true;
+    var DEBUG_CMD = false;
     var ANNOUNCE_ENABLED = true;
     var WATER_INTERVAL_MS = 1000;
+    var ROTTEN_COOLDOWN_MS = 5000;
 
-    // ============================================================
-    //     SUPPRESS LIST
-    // ============================================================
-    var SUPPRESS_PREFIXES = ['ogset', 'ogwater', '#eat', '#steak', '#food', 'og'];
+    var SUPPRESS_PREFIXES = ['ogset', 'ogwater', 'ogrotten', '#eat', '#steak', '#food', 'og'];
     function isSuppressedMessage(msg) {
         if (!msg || typeof msg !== 'string') return false;
         var lower = msg.toLowerCase();
@@ -372,7 +383,7 @@
     }
 
     function log() { var a=[].slice.call(arguments); a.unshift('[Origins]'); try{console.log.apply(console,a);}catch(e){} }
-    function warn() { var a=[].slice.call(arguments); a.unshift('[Origins]'); try{console.warn.apply(console,a);}catch(e){} }
+    function warn() { }
     function getWorld() { var mc = getMc(); return mc ? (mc.theWorld || null) : null; }
 
     function javaStr(j) {
@@ -451,40 +462,108 @@
     var hostListenersInstalled = false;
     var clientSuppressInstalled = false;
     var lastCheatKey = null;
-    var eatTrack = {};
     var lastSentOrigin = null;
 
-    // Клиентский water state (для blazeborn на стороне клиента)
     var clientWaterLastSent = 0;
-    // Хостовый cooldown на игрока
     var hostWaterLastHit = {};
 
-    function getItemId(item) {
-        if (!item) return null;
-        try { if (typeof item.getUnlocalizedName === 'function') { var n = item.getUnlocalizedName(); if (n) return String(n).toLowerCase(); } } catch(e){}
-        try { if (item.unlocalizedName) return String(item.unlocalizedName).toLowerCase(); } catch(e){}
+    var clientRottenLastSent = 0;
+    var hostRottenLastHit = {};
+
+    var lastHungerAmp = -1;
+
+    function getEffId(eff) {
+        if (!eff) return -1;
+        try { if (typeof eff.getPotionID === 'function') return safeNumber(eff.getPotionID()); } catch(e){}
+        try { if (typeof eff.$getPotionID === 'function') return safeNumber(eff.$getPotionID()); } catch(e){}
+        try { if (typeof eff.potionID !== 'undefined') return safeNumber(eff.potionID); } catch(e){}
+        try { if (typeof eff.$potionID !== 'undefined') return safeNumber(eff.$potionID); } catch(e){}
+        try { if (typeof eff.id !== 'undefined') return safeNumber(eff.id); } catch(e){}
+        try {
+            var potion = eff.potion || eff.$potion;
+            if (potion) {
+                if (typeof potion.id !== 'undefined') return safeNumber(potion.id);
+                if (typeof potion.$id !== 'undefined') return safeNumber(potion.$id);
+            }
+        } catch(e){}
+        return -1;
+    }
+    function getEffAmp(eff) {
+        if (!eff) return 0;
+        try { if (typeof eff.getAmplifier === 'function') return safeNumber(eff.getAmplifier()); } catch(e){}
+        try { if (typeof eff.amplifier !== 'undefined') return safeNumber(eff.amplifier); } catch(e){}
+        try { if (typeof eff.$amplifier !== 'undefined') return safeNumber(eff.$amplifier); } catch(e){}
+        return 0;
+    }
+    function readHungerEffect(p) {
+        if (!p) return null;
+        try {
+            if (typeof p.getActivePotionEffect === 'function') {
+                var hg = null;
+                try { if (ModAPI.potions) hg = ModAPI.potions.hunger; } catch(e){}
+                if (hg) {
+                    var eff = p.getActivePotionEffect(hg);
+                    if (eff) return eff;
+                }
+            }
+        } catch(e){}
+        var maps = [p.activePotionsMap, p.$activePotionsMap, p.potionMap, p.$potionMap, p.potions, p.$potions];
+        for (var i = 0; i < maps.length; i++) {
+            var m = maps[i];
+            if (!m) continue;
+            try { if (typeof m.get === 'function') { var e1 = m.get(17); if (e1) return e1; } } catch(e){}
+            try { var e3 = m[17]; if (e3) return e3; } catch(e){}
+            try {
+                if (typeof m.values === 'function') {
+                    var vals = m.values();
+                    var arr = vals ? (vals.$array || vals.array1 || vals.data || vals) : null;
+                    if (arr && arr.length) {
+                        for (var k = 0; k < arr.length; k++) if (getEffId(arr[k]) === 17) return arr[k];
+                    }
+                }
+            } catch(e){}
+        }
+        var lists = [];
+        try { if (typeof p.getActivePotionEffects === 'function') lists.push(p.getActivePotionEffects()); } catch(e){}
+        try { if (p.activePotionEffects) lists.push(p.activePotionEffects); } catch(e){}
+        for (var li = 0; li < lists.length; li++) {
+            var lst = lists[li];
+            if (!lst) continue;
+            var arr2 = lst.$array || lst.array1 || lst.data || lst;
+            if (!arr2 || !arr2.length) continue;
+            for (var k3 = 0; k3 < arr2.length; k3++) {
+                if (getEffId(arr2[k3]) === 17) return arr2[k3];
+            }
+        }
         return null;
     }
-    function checkEating(p, name) {
-        var st = eatTrack[name] || (eatTrack[name] = { wasUsing: false, lastItemId: null });
-        var item = null;
-        try { if (typeof p.getItemInUse === 'function') item = p.getItemInUse(); } catch(e){}
-        if (!item) { try { item = p.itemInUse || null; } catch(e){} }
-        var itemStack = null;
-        if (item) {
-            try { if (typeof item.getItem === 'function') itemStack = item.getItem(); } catch(e){}
-            if (!itemStack) { try { itemStack = item.stack || null; } catch(e){} }
+    function clientRottenTick() {
+        var p = getPlayer(); if (!p) return;
+        var origin = currentOrigin;
+        if (ROLE === 'HOST') { var nm = nameOf(p); origin = originsByPlayer[nm] || currentOrigin; }
+        if (origin !== 'undead') { lastHungerAmp = -1; return; }
+        var eff = readHungerEffect(p);
+        var amp = eff ? getEffAmp(eff) : -1;
+        if (amp >= 0 && amp !== lastHungerAmp) {
+            var now = Date.now();
+            if (now - clientRottenLastSent >= ROTTEN_COOLDOWN_MS) {
+                clientRottenLastSent = now;
+                sendChatAuto(CMD_ROTTEN);
+            }
         }
-        var id = getItemId(itemStack);
-        var isUsing = !!item;
-        if (st.wasUsing && !isUsing && st.lastItemId && /rotten|flesh|гнил/i.test(st.lastItemId)) {
-            log('*** ROTTEN FLESH eaten by', name, '***');
-            effFor(name, 'regeneration', 30, 0, 'rf:r:'+name+':'+Date.now(), 0);
-            effFor(name, 'speed', 30, 0, 'rf:s:'+name+':'+Date.now(), 0);
-            effFor(name, 'resistance', 30, 0, 'rf:t:'+name+':'+Date.now(), 0);
+        lastHungerAmp = amp;
+    }
+    function clientWaterTick() {
+        var p = getPlayer(); if (!p) return;
+        var origin = currentOrigin;
+        if (ROLE === 'HOST') { var nm = nameOf(p); origin = originsByPlayer[nm] || currentOrigin; }
+        if (origin !== 'blazeborn') return;
+        var water = isInWater(p);
+        var now = Date.now();
+        if (water && now - clientWaterLastSent >= WATER_INTERVAL_MS) {
+            clientWaterLastSent = now;
+            sendChatAuto(CMD_WATER);
         }
-        st.wasUsing = isUsing;
-        st.lastItemId = id;
     }
 
     var ORIGIN_DESC = {
@@ -494,7 +573,7 @@
         merling:{pos:['Дыхание под водой','Слабость I','В воде: NV, Speed, Jump II'],neg:['На суше: Замедление I']},
         arachnid:{pos:['Лазание по стенам','Прыжок I'],neg:['Слабость I на поверхности']},
         shulk:{pos:['Сопротивление II','Анти-отдача'],neg:['Замедление I']},
-        undead:{pos:['Сила I','Гнилая плоть: Реген+Скорость+Сопротивление 30с'],neg:['Слабость II + Замедление I на поверхности']},
+        undead:{pos:['Сила I','Гнилая плоть: Реген+Скорость+Сопротивление+Насыщение 20с'],neg:['Замедление III днём на поверхности']},
         golem:{pos:['Сопротивление II','Сила II'],neg:['Замедление I']},
         turtle:{pos:['Сопротивление I','Дыхание под водой','В воде: NV, Speed, Jump II'],neg:['На суше: Замедление II']},
         bee:{pos:['Полёт','Скорость I'],neg:['Слабость III']},
@@ -550,7 +629,18 @@
         document.getElementById('ogNext').onclick = function(){ carouselIdx = (carouselIdx + 1) % LIST.length; render(); };
         document.getElementById('ogSelect').onclick = function(){
             currentOrigin = LIST[carouselIdx];
-            onOriginSelected(currentOrigin); updateHud(); render(); toggleMenu(false);
+            toggleMenu(false);
+            if (lastSentOrigin !== currentOrigin) {
+                if (sendChatAuto(CMD_PREFIX + ' ' + currentOrigin)) {
+                    lastSentOrigin = currentOrigin;
+                    var o = ORIGINS[currentOrigin];
+                    log('Origin selected:', o ? o.name : currentOrigin);
+                }
+            }
+            lastCheatKey = null;
+            applyCheats(true);
+            updateHud();
+            render();
         };
         window.__originsRender = render;
         render();
@@ -573,11 +663,12 @@
     function maybeShowMenu() {
         if (ROLE === 'HOST') return;
         if (autoMenuShown) return;
-        if (currentOrigin) return;
         var mc = getMc();
         if (!mc || !mc.theWorld || !mc.thePlayer) return;
         autoMenuShown = true;
-        setTimeout(function(){ if (!currentOrigin) toggleMenu(true); }, 1200);
+        setTimeout(function(){
+            if (!menuVisible) toggleMenu(true);
+        }, 1500);
     }
 
     function sendChatAuto(msg) {
@@ -586,25 +677,14 @@
         try { p.sendChatMessage(toJavaString(safe)); return true; }
         catch(e){ try { p.sendChatMessage(safe); return true; } catch(e2){ return false; } }
     }
-    function onOriginSelected(id) {
-        if (ROLE === 'HOST') {
-            var n = nameOf(getPlayer());
-            if (n) { setPlayerOrigin(n, id); log('HOST self-origin:', n, '=>', id); }
-        } else {
-            if (sendChatAuto(CMD_PREFIX + ' ' + id)) {
-                lastSentOrigin = id;
-                log('client sent:', id);
-            }
-        }
-        lastCheatKey = null;
-        applyCheats(true);
-        updateHud();
-    }
 
     function applyCheats(force) {
         var p = getPlayer();
         var water = p ? isInWater(p) : false;
         var sky = p ? isUnderSky(p) : true;
+        var mc = getMc();
+        var day = mc ? isDaytime(mc) : true;
+
         var want = { fly: false, flySpeed: 0.05, antikb: false, slow: false, slowFactor: 0.85, climb: false, waterSpeed: false, waterJump: false };
         switch (currentOrigin) {
             case 'bee': want.fly = true; want.flySpeed = 0.08; break;
@@ -616,7 +696,9 @@
             case 'merling': if (water) { want.waterSpeed = true; want.waterJump = true; }
                 else { want.slow = true; want.slowFactor = 0.85; } break;
             case 'feline': if (water) { want.slow = true; want.slowFactor = 0.70; } break;
-            case 'undead': if (sky) { want.slow = true; want.slowFactor = 0.85; } break;
+            case 'undead':
+                if (day && sky && !water) { want.slow = true; want.slowFactor = 0.55; }
+                break;
         }
         var key = JSON.stringify(want);
         if (!force && lastCheatKey === key) return;
@@ -628,7 +710,6 @@
         setCheatWaterSpeed(want.waterSpeed);
         setCheatWaterJump(want.waterJump);
         if (want.fly) updateFlySpeed(want.flySpeed);
-        if (DEBUG_CMD && currentOrigin) log('cheats ->', currentOrigin, key);
     }
 
     function tryParseOrigin(text) {
@@ -648,72 +729,74 @@
     function installHostListeners() {
         if (hostListenersInstalled) return;
         hostListenersInstalled = true;
-        var hooked = 0;
-        log('HOST: installing chat hooks...');
-        function hook(name, tag, logAll) {
+        function hook(name) {
             var fn = ModAPI.hooks.methods[name];
             if (typeof fn !== 'function') return false;
             if (fn.__ogHooked) return true;
             var newFn = function () {
                 try {
                     var msg = pickMessage(arguments);
-                    if (logAll) log('CALL[' + tag + '] args=' + arguments.length + ' msg=' + (msg ? JSON.stringify(msg.substring(0,140)) : 'NULL'));
                     if (msg && isSuppressedMessage(msg)) {
                         var lower = msg.toLowerCase();
                         var nm = /<\s*([A-Za-z0-9_]+)\s*>/.exec(msg);
                         var who = nm ? nm[1] : null;
+                        var now = Date.now();
 
-                        // ogwater — вода, применяем урон
                         if (lower.indexOf(CMD_WATER) !== -1) {
                             if (who) {
-                                var now = Date.now();
                                 var last = hostWaterLastHit[who] || 0;
                                 if (now - last >= WATER_INTERVAL_MS) {
                                     hostWaterLastHit[who] = now;
-                                    // Урон 6 HP (= 3 сердца) за раз
                                     runCmd('/effect ' + who + ' 7 1 0', 'water:'+who, 0);
-                                    log('*** WATER HIT:', who, '***');
                                 }
                             }
                             return false;
                         }
 
-                        // ogset — смена origin
-                        if (lower.indexOf(CMD_PREFIX) !== -1) {
-                            var parsed = tryParseOrigin(msg);
-                            if (parsed) {
-                                var who2 = parsed.who || nameOf(getPlayer());
-                                if (who2) { setPlayerOrigin(who2, parsed.id); log('*** HOST (' + tag + '): ' + who2 + ' => ' + parsed.id + ' ***'); }
+                        if (lower.indexOf(CMD_ROTTEN) !== -1) {
+                            if (who) {
+                                var lastR = hostRottenLastHit[who] || 0;
+                                if (now - lastR >= ROTTEN_COOLDOWN_MS) {
+                                    hostRottenLastHit[who] = now;
+                                    runCmd('/effect ' + who + ' 23 20 0', 'rotten:satur:'+who, 0);
+                                    runCmd('/effect ' + who + ' 10 20 0', 'rotten:regen:'+who, 0);
+                                    runCmd('/effect ' + who + ' 1 20 0', 'rotten:speed:'+who, 0);
+                                    runCmd('/effect ' + who + ' 11 20 0', 'rotten:res:'+who, 0);
+                                }
                             }
                             return false;
                         }
 
-                        // Прочее из suppress (#eat и т.д.)
+                        if (lower.indexOf(CMD_PREFIX) !== -1) {
+                            var parsed = tryParseOrigin(msg);
+                            if (parsed) {
+                                var who2 = parsed.who || nameOf(getPlayer());
+                                if (who2) setPlayerOrigin(who2, parsed.id);
+                            }
+                            return false;
+                        }
+
                         return false;
                     }
-                } catch(e) { warn('hook ' + tag + ' err', e && e.message); }
+                } catch(e){}
                 return fn.apply(this, arguments);
             };
             newFn.__ogHooked = true; newFn.__orig = fn;
             ModAPI.hooks.methods[name] = newFn;
-            log('hooked:', name, logAll ? '(LOG-ALL)' : '');
-            hooked++;
             return true;
         }
-        hook('nmcg_GuiNewChat_printChatMessage', 'printChat', true);
-        hook('nmcg_GuiNewChat_printChatMessageWithOptionalDeletion', 'printOpt');
-        hook('nmcg_GuiNewChat_setChatLine', 'setLine');
-        hook('nme_Entity_addChatMessage', 'entAdd');
-        hook('nmce_EntityPlayerSP_addChatMessage', 'espAdd');
-        hook('nmep_EntityPlayerMP_addChatMessage', 'epmAdd');
-        hook('nms_MinecraftServer_addChatMessage', 'srvAdd');
-        log('HOST: chat hooks installed =', hooked);
+        hook('nmcg_GuiNewChat_printChatMessage');
+        hook('nmcg_GuiNewChat_printChatMessageWithOptionalDeletion');
+        hook('nmcg_GuiNewChat_setChatLine');
+        hook('nme_Entity_addChatMessage');
+        hook('nmce_EntityPlayerSP_addChatMessage');
+        hook('nmep_EntityPlayerMP_addChatMessage');
+        hook('nms_MinecraftServer_addChatMessage');
     }
 
     function installClientSuppress() {
         if (clientSuppressInstalled) return;
         clientSuppressInstalled = true;
-        var installed = 0;
         function suppressHook(name) {
             var fn = ModAPI.hooks.methods[name];
             if (typeof fn !== 'function') return false;
@@ -725,10 +808,8 @@
                 } catch(e){}
                 return fn.apply(this, arguments);
             };
-            newFn.__ogSuppress = true;
-            newFn.__orig = fn;
+            newFn.__ogSuppress = true; newFn.__orig = fn;
             ModAPI.hooks.methods[name] = newFn;
-            installed++;
             return true;
         }
         suppressHook('nmcg_GuiNewChat_printChatMessage');
@@ -738,7 +819,6 @@
         suppressHook('nmce_EntityPlayerSP_addChatMessage');
         suppressHook('nmep_EntityPlayerMP_addChatMessage');
         suppressHook('nms_MinecraftServer_addChatMessage');
-        log('CLIENT: suppression hooks =', installed);
     }
 
     function announceOrigin(name, originId) {
@@ -750,8 +830,7 @@
         try {
             var ok = sendChatAuto(msg);
             if (!ok) throw new Error('sendChatAuto false');
-            log('announce:', msg);
-        } catch(e) { ANNOUNCE_ENABLED = false; warn('announce FAILED - disabled. err:', e && e.message); }
+        } catch(e) { ANNOUNCE_ENABLED = false; }
     }
 
     function setPlayerOrigin(name, originId) {
@@ -759,7 +838,6 @@
         var changed = (old !== originId);
         originsByPlayer[name] = originId;
         playerState[name] = { origin: originId, phase: 'clearing', changedAt: Date.now(), lastForeverAt: 0 };
-        eatTrack[name] = { wasUsing: false, lastItemId: null };
         lastForeverTick[name] = 0;
         if (name === nameOf(getPlayer())) {
             currentOrigin = originId;
@@ -768,7 +846,6 @@
             updateHud();
         }
         if (changed) {
-            log('setPlayerOrigin:', name, ':', old, '->', originId);
             try { announceOrigin(name, originId); } catch(e){}
         }
     }
@@ -778,7 +855,6 @@
         if (lastCmdAt[key] && safeNumber(now - lastCmdAt[key]) < (cd || 1000)) return false;
         lastCmdAt[key] = now;
         var p = getPlayer(); if (!p) return false;
-        if (DEBUG_CMD) log('>> ' + cmd);
         var safe = sanitizeChat(cmd); if (!safe) return false;
         try { p.sendChatMessage(toJavaString(safe)); return true; }
         catch(e){ try { p.sendChatMessage(safe); return true; } catch(e2){ return false; } }
@@ -815,8 +891,7 @@
     function applyForeverEffects(name, origin) {
         if (lastForeverTick[name] === tickCounter) return;
         lastForeverTick[name] = tickCounter;
-        var list = [];
-        function add(k, amp){ effFor(name, k, FOREVER_SEC, amp||0, 'f:'+name+':'+k, 1500); list.push(k+(amp?'/'+amp:'')); }
+        function add(k, amp){ effFor(name, k, FOREVER_SEC, amp||0, 'f:'+name+':'+k, 1500); }
         switch (origin) {
             case 'blazeborn': add('fire_resistance'); break;
             case 'merling': add('water_breathing'); add('weakness'); break;
@@ -829,7 +904,6 @@
             case 'slime': add('jump_boost', 1); add('speed'); add('weakness', 1); break;
             case 'feline': break;
         }
-        if (list.length) log('FOREVER ->', name, '=', list.join(', '));
     }
 
     function applyConditionalEffects(mc, name, origin, day, rain, p) {
@@ -838,7 +912,7 @@
         var inRain = rain && sky;
 
         switch (origin) {
-            case 'blazeborn': break;   // вода — только через client watermark
+            case 'blazeborn': break;
             case 'merling':
                 if (water) {
                     effFor(name, 'speed', 40, 0, 'c:me:spd', 2500);
@@ -848,9 +922,7 @@
             case 'arachnid':
                 if (sky) effFor(name, 'weakness', 40, 0, 'c:ar:wk', 2500);
                 break;
-            case 'undead':
-                if (sky) effFor(name, 'weakness', 40, 1, 'c:un:wk', 2500);
-                break;
+            case 'undead': break;
             case 'turtle':
                 if (water) {
                     effFor(name, 'speed', 40, 0, 'c:tu:spd', 2500);
@@ -871,7 +943,6 @@
         sendChatAuto('/gamerule sendCommandFeedback false');
         sendChatAuto('/gamerule commandBlockOutput false');
         sendChatAuto('/gamerule logAdminCommands false');
-        log('gamerules set');
     }
 
     function hostTick() {
@@ -897,9 +968,7 @@
             if (st.phase === 'active') {
                 var p = findPlayer(mc, name);
                 if (p) {
-                    try { applyConditionalEffects(mc, name, origin, day, rain, p); }
-                    catch(e) { warn('cond ' + name + ':', e && e.message); }
-                    try { checkEating(p, name); } catch(e){}
+                    try { applyConditionalEffects(mc, name, origin, day, rain, p); } catch(e){}
                 }
                 if (safeNumber(now - st.lastForeverAt) > 25000) {
                     applyForeverEffects(name, origin);
@@ -909,48 +978,11 @@
         }
     }
     function hostUpdate() {
-        try { hostTick(); } catch(e){ warn('hostTick err', e && e.message); }
+        try { hostTick(); } catch(e){}
         applyCheats(false);
         updateGamma(computeGammaWant());
-    }
-
-    // ============================================================
-    //     CLIENT WATER TICK — VilaVanilla сама шлёт ogwater
-    // ============================================================
-    var clientWaterWasInWater = false;
-    var clientWaterLastLog = 0;
-    function clientWaterTick() {
-        var p = getPlayer();
-        if (!p) return;
-        var origin = currentOrigin;
-        if (ROLE === 'HOST') {
-            var nm = nameOf(p);
-            origin = originsByPlayer[nm] || currentOrigin;
-        }
-        if (origin !== 'blazeborn') {
-            clientWaterWasInWater = false;
-            return;
-        }
-        var water = isInWater(p);
-        var now = Date.now();
-        if (DEBUG_CMD && now - clientWaterLastLog >= 5000) {
-            clientWaterLastLog = now;
-            log('WATER client check:', nameOf(p), 'water=' + water);
-        }
-        if (water) {
-            if (now - clientWaterLastSent >= WATER_INTERVAL_MS) {
-                clientWaterLastSent = now;
-                if (sendChatAuto(CMD_WATER)) {
-                    log('CLIENT: sent ogwater');
-                }
-            }
-            clientWaterWasInWater = true;
-        } else {
-            if (clientWaterWasInWater) {
-                log('CLIENT: left water');
-            }
-            clientWaterWasInWater = false;
-        }
+        try { clientWaterTick(); } catch(e){}
+        try { clientRottenTick(); } catch(e){}
     }
 
     function clientUpdate() {
@@ -959,12 +991,57 @@
         applyCheats(false);
         updateGamma(computeGammaWant());
         try { clientWaterTick(); } catch(e){}
-        var p = getPlayer(); if (!p || !currentOrigin) return;
-        if (lastSentOrigin !== currentOrigin) {
-            if (sendChatAuto(CMD_PREFIX + ' ' + currentOrigin)) {
-                log('client sent (changed):', currentOrigin);
-                lastSentOrigin = currentOrigin;
-            }
+        try { clientRottenTick(); } catch(e){}
+    }
+
+    function checkWorldTransition() {
+        var mc = getMc();
+        if (!mc) return;
+        var inWorld = !!(mc.theWorld && mc.thePlayer);
+
+        if (!inWorld && wasInWorld) {
+            currentOrigin = null;
+            lastSentOrigin = null;
+            autoMenuShown = false;
+            originsByPlayer = {};
+            playerState = {};
+            lastCheatKey = null;
+            clientWaterLastSent = 0;
+            clientRottenLastSent = 0;
+            lastHungerAmp = -1;
+            lastForeverTick = {};
+            setCheatFly(false);
+            setCheatAntiKB(false);
+            setCheatSlow(false);
+            setCheatClimb(false);
+            setCheatWaterSpeed(false);
+            setCheatWaterJump(false);
+            updateGamma(false);
+            toggleMenu(false);
+            updateHud();
+            wasInWorld = false;
+        }
+
+        if (inWorld && !wasInWorld) {
+            currentOrigin = null;
+            lastSentOrigin = null;
+            autoMenuShown = false;
+            originsByPlayer = {};
+            playerState = {};
+            lastCheatKey = null;
+            clientWaterLastSent = 0;
+            clientRottenLastSent = 0;
+            lastHungerAmp = -1;
+            lastForeverTick = {};
+            setCheatFly(false);
+            setCheatAntiKB(false);
+            setCheatSlow(false);
+            setCheatClimb(false);
+            setCheatWaterSpeed(false);
+            setCheatWaterJump(false);
+            updateGamma(false);
+            updateHud();
+            wasInWorld = true;
         }
     }
 
@@ -974,6 +1051,7 @@
     }
     function onUpdateTick() {
         tickCounter++;
+        try { checkWorldTransition(); } catch(e){}
         if (ROLE === 'HOST') hostUpdate();
         else clientUpdate();
     }
@@ -986,82 +1064,32 @@
                     var cmd = t.trim().toLowerCase();
                     if (cmd === '#eat' || cmd === '#steak' || cmd === '#food') {
                         var who = nameOf(getPlayer());
-                        if (who) { log('*** #eat for', who, '***'); giveItem(who, 'minecraft:cooked_beef', 64, null); }
+                        if (who) { giveItem(who, 'minecraft:cooked_beef', 64, null); }
                         return false;
                     }
                 } catch(x){}
                 return true;
             });
-            log('#eat listener installed');
-        } catch(e) { warn('#eat listener failed:', e && e.message); }
+        } catch(e){}
     }
-
-    window.__originsDiag = function () {
-        return { version: 'v1.0', role: ROLE, selfName: nameOf(getPlayer()),
-                 currentOrigin: currentOrigin, originsByPlayer: originsByPlayer, tickCounter: tickCounter };
-    };
-    window.__originsList = function () {
-        var o = []; for (var n in originsByPlayer) o.push({name:n, origin:originsByPlayer[n]});
-        try { console.table(o); } catch(e){ log(o); }
-        return o;
-    };
-    window.__originsSet = function (n, id) { if (!ORIGINS[id]) return false; setPlayerOrigin(n, id); return true; };
-    window.__originsSelf = function () { return nameOf(getPlayer()); };
-    window.__originsMenu = function () { toggleMenu(); };
-    window.__originsForceCheats = function () { lastCheatKey = null; applyCheats(true); return cheatState; };
-    window.__originsTestGamma = function (on) { if (typeof on !== 'boolean') on = !gammaState.applied; updateGamma(on); return gammaState; };
-    window.__originsToggleAnnounce = function (on) { ANNOUNCE_ENABLED = (typeof on === 'boolean') ? on : !ANNOUNCE_ENABLED; return ANNOUNCE_ENABLED; };
-    window.__originsGiveSteak = function (n, count) { var name = n || nameOf(getPlayer()); giveItem(name, 'minecraft:cooked_beef', count || 64, null); };
-    window.__originsBZDiag = function () {
-        var p = getPlayer(); if (!p) return null;
-        var mc = getMc(); var w = mc && mc.theWorld;
-        var x = Math.floor(safeNumber(p.posX));
-        var yBase = safeNumber(p.posY);
-        var z = Math.floor(safeNumber(p.posZ));
-        var blockIds = [];
-        for (var dy = -1; dy <= 2; dy++) {
-            var yy = Math.floor(yBase) + dy;
-            var s = blockAt(w, x, yy, z);
-            blockIds.push({ y: yy, id: getBlockId(s) });
-        }
-        return { name: nameOf(p), origin: currentOrigin, role: ROLE,
-                 water: isInWater(p), rain: isRaining(mc), sky: isUnderSky(p),
-                 posY: safeNumber(p.posY), blocksAround: blockIds,
-                 waterLastSent: clientWaterLastSent,
-                 hostWaterLastHit: hostWaterLastHit };
-    };
-    window.__originsSuppressList = function () { return SUPPRESS_PREFIXES.slice(); };
-    window.__originsWaterTest = function () {
-        var p = getPlayer(); if (!p) return false;
-        var nm = nameOf(p);
-        var ok = sendChatAuto(CMD_WATER);
-        log('manual ogwater send:', ok);
-        return ok;
-    };
 
     function boot() {
         ROLE = detectRole();
-        log('version = v1.0 | role =', ROLE);
+        log('Origins v0.5 loaded (' + ROLE + ')');
         buildGUI(); updateHud();
-        window.addEventListener('keydown', function (e) {
-            if (e.code === 'ShiftRight') { if (!getWorld()) return; e.preventDefault(); toggleMenu(); }
-        });
         if (ROLE === 'HOST') {
             installHostListeners();
-            log('HOST mode ready');
         } else {
             installClientSuppress();
-            log('CLIENT mode ready');
         }
         installEatCommand();
         try { ModAPI.addEventListener('frame', function () { try { onFrameTick(); } catch(e){} }); } catch(e){}
-        ModAPI.addEventListener('update', function () { try { onUpdateTick(); } catch(e){ warn('update err:', e && e.message); } });
-        log('origins loaded:', LIST.length);
+        ModAPI.addEventListener('update', function () { try { onUpdateTick(); } catch(e){} });
     }
     if (typeof ModAPI !== 'undefined' && ModAPI && ModAPI.addEventListener) setTimeout(boot, 700);
     else {
         var t = setInterval(function () {
             if (typeof ModAPI !== 'undefined' && ModAPI && ModAPI.addEventListener) { clearInterval(t); setTimeout(boot, 700); }
-        }, 100);
+        }, 700);
     }
 })();
