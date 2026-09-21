@@ -40,7 +40,7 @@ internal channel.
 
 Installation
 
-1. Download Eaglercraft 1.8.8 ()
+1. Download Eaglercraft 1.8.8 (You need a decompiled version.(Current link:https://github.com/3kh0/eaglercraft-builds))
 2. Download EaglerForge (https://eaglerforge.github.io/EaglerForgeInjector/)
 3. Inject EaglerForge client and server eaglercraft
 4. Download origin.js
