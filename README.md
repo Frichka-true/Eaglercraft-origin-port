@@ -1,4 +1,4 @@
-<img width="1919" height="1033" alt="image" src="https://github.com/user-attachments/assets/69aa96f4-f9a9-4d9e-a025-774aba489021" />Origins — Eaglercraft 1.8.8
+<img width="1919" height="1033" alt="image" src="https://github.com/user-attachments/assets/69aa96f4-f9a9-4d9e-a025-774aba489021" />Origins - Eaglercraft 1.8.8
 
 A small origins mod for Eaglercraft 1.8.8. When you enter a world, you pick
 a race that gives you unique abilities and drawbacks. Works in singleplayer
