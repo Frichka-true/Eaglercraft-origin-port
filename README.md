@@ -25,7 +25,7 @@ Arachnid climbs the wall:
 <img width="1919" height="1033" alt="image" src="https://github.com/user-attachments/assets/e2b043c0-60db-4fd9-b6b0-bc207cdd8c9c" />
 
 
-What it does
+**What it does**
 
 When you first enter a world, a menu pops up with a carousel of races. The
 left and right arrows cycle through options, the Select button confirms your
@@ -38,7 +38,7 @@ In multiplayer, clients do not need operator rights. All effects are applied
 by the host, and clients only report their own state through a silent
 internal channel.
 
-Installation
+**Installation**
 
 1. Download Eaglercraft 1.8.8 (You need a decompiled version.(Current link:https://github.com/3kh0/eaglercraft-builds))
 2. Download EaglerForge (https://eaglerforge.github.io/EaglerForgeInjector/)
@@ -49,100 +49,77 @@ Installation
 
 For multiplayer, install the file on the host and on every client.
 
-Origins
+**Origins**
 
 11 races in total. Here is the full list with abilities and drawbacks.
 
-Human
+*Human*-
   Abilities: none
   Drawbacks: none
 
-Blazeborn
+*Blazeborn*-
   Abilities: fire immunity
   Drawbacks: damage in water
 
-Feline
+*Feline*-
   Abilities: permanent night vision
   Drawbacks: Slowness II in water
 
-Merling
+*Merling*-
   Abilities: water breathing, night vision in water, Speed I and Jump
   Boost II in water
   Drawbacks: Slowness I on land, permanent Weakness I
 
-Arachnid
+*Arachnid*-
   Abilities: wall climbing, Jump Boost I
   Drawbacks: Weakness I on the surface
 
-Shulk
+*Shulk*-
   Abilities: Resistance II, anti-knockback
   Drawbacks: Slowness I
 
-Undead
+*Undead*-
   Abilities: Strength I, rotten flesh gives Regeneration, Speed,
   Resistance and Saturation for 20 seconds
   Drawbacks: Slowness III on the surface during the day
 
-Golem
+*Golem*-
   Abilities: Resistance II, Strength II
   Drawbacks: Slowness I
 
-Turtle
+*Turtle*-
   Abilities: Resistance I, water breathing, night vision in water,
   Speed I and Jump Boost II in water
   Drawbacks: Slowness II on land
 
-Bee
+*Bee*-
   Abilities: flight, Speed I
   Drawbacks: Weakness III
 
-Slime
+*Slime*-
   Abilities: Jump Boost II, Speed I
   Drawbacks: Weakness II
 
-Requirements
+**Requirements**
 
-Eaglercraft 1.8.8 — server.html and client.html.
+Eaglercraft 1.8.8 - server.html and client.html.
 
 Cheats must be enabled on the host. Clients do not need OP.
 
-Known limitations
+I was unable to implement them exactly as intended, 
+so I adapted certain races to my own liking 
+(IMPORTANT!!! THEIR ABILITIES AND DRAWBACKS DIFFER FROM THE ORIGINAL).
 
-Undead and rotten flesh. The Hunger effect cannot be cleared directly — in
-different Eaglercraft builds the effect-clearing command behaves
-inconsistently. The mod compensates with Saturation I for 20 seconds, which
-cancels hunger depletion.
-
-Blazeborn and water. Server-side setFire is not usable in this build.
-Damage is applied through instant_damage instead of real fire.
-
-Chat. All messages sent by the mod pass through an ASCII filter.
-Eaglercraft disconnects players on any non-ASCII character in chat,
-including emoji, Cyrillic and arrows.
-
-Night vision. Uses the client gamma setting instead of the vanilla
-night_vision effect. The vanilla effect often does not render correctly
-in Eaglercraft.
-
-Configuration
+**Configuration**
 
 The mod auto-detects host vs client from the URL (server.html is the host).
 No manual setup is needed for a standard LAN world.
 
-If you want to tweak values, look for these constants near the top of the
-file.
-
-WATER_INTERVAL_MS — how often water damage is applied, default 1000 ms
-
-ROTTEN_COOLDOWN_MS — cooldown for the rotten flesh buff, default 5000 ms
-
-FOREVER_SEC — duration of "permanent" effects, refreshed periodically
-
-License
+**License**
 
 MIT. Full text in the LICENSE file.
 
-Feedback
+**Feedback**
 
 Issues and pull requests are welcome. Before submitting, test your changes
-in both server.html and client.html — the logic differs between them.
+in both server.html and client.html - the logic differs between them.
