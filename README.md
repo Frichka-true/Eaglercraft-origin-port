@@ -108,7 +108,7 @@ Cheats must be enabled on the host. Clients do not need OP.
 
 I was unable to implement them exactly as intended, 
 so I adapted certain races to my own liking 
-(IMPORTANT!!! THEIR ABILITIES AND DRAWBACKS DIFFER FROM THE ORIGINAL).
+(Note: I couldn't implement some races exactly as in the original, so I adapted them. Their abilities and drawbacks may differ from the original Origins.).
 
 **Configuration**
 
