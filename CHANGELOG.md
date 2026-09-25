@@ -31,7 +31,7 @@ again on the next world entry.
 - Water damage for Blazeborn
 - Rotten flesh detection for Undead through hunger effect tracking
 
-v0.1 — v0.4 (internal versions)
+v0.1 - v0.4 (internal versions)
 
 Early prototypes of the origins system and chat bridge. Not publicly
 released.
